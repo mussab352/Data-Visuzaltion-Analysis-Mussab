@@ -1,0 +1,385 @@
+<title>Reliability-to-NPS Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a control strip over one large scatter+curve, a readout column beside it, and a small "value of the next point" chart below. */
+:root {
+  --bg: #f6f7f8;
+  --panel: #ffffff;
+  --ink: #101418;
+  --ink-2: #4b535c;
+  --ink-3: #79818a;
+  --rule: #dfe3e7;
+  --grid: #eceff2;
+  --dots: #2a78d6;
+  --curve: #101418;
+  --accent: #eb6834;
+  --accent-soft: #fbe3d8;
+  --ceiling: #79818a;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121416; --panel: #1a1d20; --ink: #eef0f2; --ink-2: #b9c0c7; --ink-3: #8a929a;
+    --rule: #2c3136; --grid: #24282c; --dots: #3987e5; --curve: #eef0f2; --accent: #d95926;
+    --accent-soft: #3a2419; --ceiling: #8a929a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121416; --panel: #1a1d20; --ink: #eef0f2; --ink-2: #b9c0c7; --ink-3: #8a929a;
+  --rule: #2c3136; --grid: #24282c; --dots: #3987e5; --curve: #eef0f2; --accent: #d95926;
+  --accent-soft: #3a2419; --ceiling: #8a929a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font: 600 12px/1 var(--font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+h1 { font: 800 clamp(26px, 4vw, 38px)/1.1 var(--font-display); letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.lede { color: var(--ink-2); max-width: 68ch; margin: 0; }
+.warn { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; width: fit-content; background: var(--panel); }
+.warn b { color: var(--accent); }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 20px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl label, .ctl .lbl { font: 600 12px/1.2 var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); display: flex; justify-content: space-between; gap: 8px; }
+.ctl output { color: var(--ink); font-weight: 600; letter-spacing: 0; text-transform: none; }
+select, input[type=range] { width: 100%; }
+select { font: 500 14px var(--font-body); padding: 7px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+input[type=range] { accent-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.seg button { font: 500 13px var(--font-body); padding: 7px 10px; border: 0; background: var(--bg); color: var(--ink-2); cursor: pointer; flex: 1; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+.chart-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 10px 6px; min-width: 0; position: relative; }
+.chart-card h2, .sub h2 { font: 700 15px/1.3 var(--font-display); margin: 0 8px 4px; }
+.chart-card p.hint { margin: 0 8px 6px; font-size: 13px; color: var(--ink-3); }
+svg { display: block; width: 100%; height: auto; touch-action: none; }
+svg text { font-family: var(--font-data); font-size: 11px; fill: var(--ink-3); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 8px 8px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.sw.dot { width: 9px; height: 9px; border-radius: 50%; }
+
+.readout { display: grid; gap: 12px; }
+.stat { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
+.stat .k { font: 600 11px/1.2 var(--font-data); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+.stat .v { font: 800 34px/1.1 var(--font-display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat .v.acc { color: var(--accent); }
+.stat .s { font: 500 13px/1.4 var(--font-data); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.stat.hero { border-color: var(--accent); background: linear-gradient(var(--accent-soft), var(--accent-soft)) top / 100% 4px no-repeat, var(--panel); }
+
+.sub { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 10px 6px; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 24px; font-size: 13.5px; color: var(--ink-2); }
+.notes h3 { font: 700 13px/1.3 var(--font-display); color: var(--ink); margin: 0 0 4px; }
+.notes p { margin: 0; }
+.mono { font-family: var(--font-data); font-size: 12.5px; }
+details { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+.tbl { overflow-x: auto; max-height: 360px; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--panel); font: 600 11px var(--font-data); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+td.n { text-align: right; font-family: var(--font-data); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font: 500 12px/1.4 var(--font-data); padding: 6px 9px; border-radius: 6px; max-width: 260px; transform: translate(-50%, calc(-100% - 12px)); }
+@media (prefers-reduced-motion: no-preference) { .stat .v { transition: color .2s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Case 3 · TGV satisfaction paradox · 130 directional routes</div>
+    <h1>How much NPS does a point of reliability buy?</h1>
+    <p class="lede">Drag the orange marker (or the slider) to raise a route's reliability. The curve is fitted to all 130 routes and flattens towards a ceiling you choose, so each extra point is worth less than the one before.</p>
+    <span class="warn"><b>⚠</b> NPS values are simulated for teaching; reliability is real SNCF open data.</span>
+  </header>
+
+  <section class="controls" aria-label="Model settings">
+    <div class="ctl">
+      <label for="start">Starting point</label>
+      <select id="start"></select>
+    </div>
+    <div class="ctl">
+      <label for="gain">Reliability increase <output id="gainOut"></output></label>
+      <input id="gain" type="range" min="0" max="15" step="0.1" value="5">
+    </div>
+    <div class="ctl">
+      <label for="ceil">NPS ceiling (assumption) <output id="ceilOut"></output></label>
+      <input id="ceil" type="range" min="50" max="100" step="1" value="65">
+    </div>
+    <div class="ctl">
+      <span class="lbl">Reliability measured over</span>
+      <div class="seg" role="group" aria-label="Reliability period">
+        <button id="pFull" type="button" aria-pressed="true">2018 – 2026</button>
+        <button id="pL12" type="button" aria-pressed="false">Last 12 months</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="main">
+    <div class="chart-card">
+      <h2>NPS vs reliability, with fitted curve</h2>
+      <p class="hint">Reliability = share of scheduled trains that ran and arrived on time.</p>
+      <div class="legend">
+        <span><i class="sw dot" style="background:var(--dots)"></i>Route</span>
+        <span><i class="sw" style="background:var(--curve)"></i>Fitted curve</span>
+        <span><i class="sw" style="background:var(--ceiling);height:2px"></i>Ceiling</span>
+        <span><i class="sw" style="background:var(--accent)"></i>Your scenario</span>
+      </div>
+      <svg id="chart" viewBox="0 0 720 430" role="img" aria-label="Scatter of NPS against reliability for 130 routes with a fitted saturating curve"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+
+    <aside class="readout" aria-live="polite">
+      <div class="stat hero">
+        <span class="k">Predicted NPS change</span>
+        <span class="v acc" id="dNps"></span>
+        <span class="s" id="npsPath"></span>
+      </div>
+      <div class="stat">
+        <span class="k">Reliability change</span>
+        <span class="v" id="dRel"></span>
+        <span class="s" id="relPath"></span>
+      </div>
+      <div class="stat">
+        <span class="k">Value of the next point</span>
+        <span class="v" id="marg"></span>
+        <span class="s" id="margNote"></span>
+      </div>
+      <div class="stat">
+        <span class="k">Model fit</span>
+        <span class="s" id="fit"></span>
+      </div>
+    </aside>
+  </section>
+
+  <section class="sub">
+    <h2>NPS gained from each extra reliability point</h2>
+    <p class="hint" style="margin:0 8px 6px;font-size:13px;color:var(--ink-3)">Bars inside your scenario are orange. Bars shrink to the right: that is the flattening.</p>
+    <svg id="marginal" viewBox="0 0 1000 170" role="img" aria-label="Bar chart of marginal NPS gain per reliability point"></svg>
+  </section>
+
+  <section class="notes">
+    <div><h3>How the curve is built</h3><p class="mono">NPS = C − b·e<sup>−k(R − 80)</sup></p><p>C is the ceiling you set. For each C, b and k are fitted by least squares to the 130 routes. The slope is b·k·e<sup>−k(R−80)</sup>, which falls as R rises.</p></div>
+    <div><h3>What the data can and can't tell you</h3><p>Within the observed range (about 64% to 91%), ceilings from 55 to 100 fit almost equally well (see R²), and a straight line fits as well as any curve. The flattening above about 90% is an assumption, not something the data proves. Present it as a scenario.</p></div>
+    <div><h3>Caveats for the report</h3><p>NPS is simulated. The relationship is a correlation across routes, not proof that fixing punctuality causes NPS to rise. Routes differ in many other ways (trip purpose, complaints about staff, wifi, price). The typical route sits about ±10 NPS points off the curve.</p></div>
+  </section>
+
+  <details>
+    <summary>Route data (table view)</summary>
+    <div class="tbl"><table id="tbl"><thead><tr><th>Route</th><th>Reliability 2018–26 %</th><th>Reliability last 12m %</th><th>NPS</th></tr></thead><tbody></tbody></table></div>
+  </details>
+</div>
+
+<script>
+const RAW = [["Aix En Provence Tgv \u2192 Paris Lyon",86.39,84.97,49],["Angers Saint Laud \u2192 Paris Montparnasse",82.51,82.19,48],["Angouleme \u2192 Paris Montparnasse",80.95,82.62,42],["Annecy \u2192 Paris Lyon",77.2,75.49,12],["Arras \u2192 Paris Nord",75.17,75.21,34],["Avignon Tgv \u2192 Paris Lyon",82.21,80.67,25],["Barcelona \u2192 Paris Lyon",78.26,77.98,27],["Bellegarde (Ain) \u2192 Paris Lyon",84.24,85.47,49],["Besancon Franche Comte Tgv \u2192 Paris Lyon",89.23,89.24,53],["Bordeaux St Jean \u2192 Paris Montparnasse",81.27,82.13,35],["Bordeaux St Jean \u2192 Paris Vaugirard",83.28,null,34],["Bordeaux St Jean \u2192 Tourcoing",82.08,80.75,34],["Brest \u2192 Paris Montparnasse",88.07,89.97,25],["Chambery Challes Les Eaux \u2192 Paris Lyon",70.53,67.66,17],["Dijon Ville \u2192 Paris Lyon",87.76,87.81,44],["Douai \u2192 Paris Nord",74.75,74.43,33],["Dunkerque \u2192 Paris Nord",84.5,82.9,23],["Francfort \u2192 Paris Est",78.97,78.06,5],["Geneve \u2192 Paris Lyon",87.57,89.44,53],["Grenoble \u2192 Paris Lyon",84.15,83.36,38],["Italie \u2192 Paris Lyon",64.22,63.94,-20],["La Rochelle Ville \u2192 Paris Montparnasse",85.85,87.46,51],["Lausanne \u2192 Paris Lyon",88.87,89.7,29],["Laval \u2192 Paris Montparnasse",81.63,83.16,38],["Le Creusot Montceau Montchanin \u2192 Paris Lyon",81.09,81.35,57],["Le Mans \u2192 Paris Montparnasse",77.3,78.27,22],["Lille \u2192 Lyon Part Dieu",79.81,80.55,22],["Lille \u2192 Marseille St Charles",78.82,76.17,24],["Lille \u2192 Paris Nord",81.12,83.4,25],["Lyon Part Dieu \u2192 Lille",70.71,74.12,1],["Lyon Part Dieu \u2192 Marne La Vallee",71.89,71.24,30],["Lyon Part Dieu \u2192 Marseille St Charles",74.83,74.28,13],["Lyon Part Dieu \u2192 Montpellier",75.94,76.5,30],["Lyon Part Dieu \u2192 Paris Lyon",86.7,86.4,46],["Lyon Part Dieu \u2192 Rennes",82.15,88.75,37],["Macon Loche \u2192 Paris Lyon",71.52,64.77,16],["Madrid \u2192 Marseille St Charles",73.41,null,-16],["Marne La Vallee \u2192 Lyon Part Dieu",78.16,77.13,27],["Marne La Vallee \u2192 Marseille St Charles",79.18,75.58,33],["Marseille St Charles \u2192 Lille",75.48,77.13,18],["Marseille St Charles \u2192 Lyon Part Dieu",81.52,84.56,42],["Marseille St Charles \u2192 Madrid",83.88,null,14],["Marseille St Charles \u2192 Marne La Vallee",79.69,79.53,35],["Marseille St Charles \u2192 Paris Lyon",86.62,85.2,41],["Marseille St Charles \u2192 Tourcoing",78.49,79.44,28],["Metz \u2192 Paris Est",79.76,81.7,30],["Montpellier \u2192 Lyon Part Dieu",78.91,82.48,22],["Montpellier \u2192 Paris Lyon",80.34,83.29,23],["Mulhouse Ville \u2192 Paris Lyon",87.48,88.07,57],["Nancy \u2192 Paris Est",87.44,88.91,44],["Nantes \u2192 Paris Montparnasse",84.59,84.31,50],["Nantes \u2192 Paris Vaugirard",85.17,null,62],["Nantes \u2192 Strasbourg",85.51,84.39,43],["Nice Ville \u2192 Paris Lyon",81.03,77.26,43],["Nimes \u2192 Paris Lyon",76.86,79.83,37],["Paris Est \u2192 Francfort",77.28,63.38,26],["Paris Est \u2192 Metz",85.45,85.0,39],["Paris Est \u2192 Nancy",89.43,89.28,53],["Paris Est \u2192 Reims",86.94,89.05,43],["Paris Est \u2192 Strasbourg",88.1,87.08,49],["Paris Est \u2192 Stuttgart",75.43,34.72,7],["Paris Lyon \u2192 Aix En Provence Tgv",87.06,86.77,42],["Paris Lyon \u2192 Annecy",83.38,83.0,23],["Paris Lyon \u2192 Avignon Tgv",85.1,85.36,41],["Paris Lyon \u2192 Barcelona",83.51,87.33,48],["Paris Lyon \u2192 Bellegarde (Ain)",80.76,84.04,46],["Paris Lyon \u2192 Besancon Franche Comte Tgv",87.5,88.57,61],["Paris Lyon \u2192 Chambery Challes Les Eaux",79.81,77.04,34],["Paris Lyon \u2192 Dijon Ville",88.73,89.36,46],["Paris Lyon \u2192 Geneve",84.24,86.52,34],["Paris Lyon \u2192 Grenoble",82.71,83.49,29],["Paris Lyon \u2192 Italie",79.7,76.92,31],["Paris Lyon \u2192 Lausanne",84.7,86.2,32],["Paris Lyon \u2192 Le Creusot Montceau Montchanin",87.86,89.26,61],["Paris Lyon \u2192 Lyon Part Dieu",89.67,89.8,65],["Paris Lyon \u2192 Macon Loche",86.9,88.1,42],["Paris Lyon \u2192 Marseille St Charles",87.37,88.07,56],["Paris Lyon \u2192 Montpellier",83.84,86.3,36],["Paris Lyon \u2192 Mulhouse Ville",86.0,87.3,44],["Paris Lyon \u2192 Nice Ville",81.72,81.27,23],["Paris Lyon \u2192 Nimes",81.89,86.15,27],["Paris Lyon \u2192 Perpignan",81.28,84.14,43],["Paris Lyon \u2192 Saint Etienne Chateaucreux",81.8,81.88,16],["Paris Lyon \u2192 Toulon",82.81,85.51,38],["Paris Lyon \u2192 Valence Alixan Tgv",84.1,85.64,44],["Paris Lyon \u2192 Zurich",83.08,85.95,44],["Paris Montparnasse \u2192 Angers Saint Laud",85.63,87.79,34],["Paris Montparnasse \u2192 Angouleme",85.06,87.5,39],["Paris Montparnasse \u2192 Bordeaux St Jean",86.43,87.74,41],["Paris Montparnasse \u2192 Brest",87.61,89.87,36],["Paris Montparnasse \u2192 La Rochelle Ville",87.54,88.19,27],["Paris Montparnasse \u2192 Laval",84.48,84.7,28],["Paris Montparnasse \u2192 Le Mans",85.34,88.36,33],["Paris Montparnasse \u2192 Nantes",85.99,85.87,46],["Paris Montparnasse \u2192 Poitiers",86.36,88.43,39],["Paris Montparnasse \u2192 Quimper",86.23,88.17,26],["Paris Montparnasse \u2192 Rennes",86.58,88.25,37],["Paris Montparnasse \u2192 St Malo",86.5,90.03,31],["Paris Montparnasse \u2192 St Pierre Des Corps",84.87,86.88,49],["Paris Montparnasse \u2192 Toulouse Matabiau",82.71,78.93,31],["Paris Montparnasse \u2192 Tours",83.71,83.46,27],["Paris Montparnasse \u2192 Vannes",82.38,85.52,45],["Paris Nord \u2192 Arras",83.89,83.56,15],["Paris Nord \u2192 Douai",80.27,80.29,18],["Paris Nord \u2192 Dunkerque",85.12,84.92,25],["Paris Nord \u2192 Lille",84.1,85.62,26],["Paris Vaugirard \u2192 Bordeaux St Jean",86.33,null,51],["Paris Vaugirard \u2192 Nantes",85.19,null,51],["Paris Vaugirard \u2192 Rennes",88.85,null,51],["Perpignan \u2192 Paris Lyon",79.71,81.6,32],["Poitiers \u2192 Paris Montparnasse",79.37,81.76,45],["Quimper \u2192 Paris Montparnasse",86.99,87.99,36],["Reims \u2192 Paris Est",86.09,90.37,36],["Rennes \u2192 Lyon Part Dieu",85.42,87.62,35],["Rennes \u2192 Paris Montparnasse",81.29,82.74,30],["Rennes \u2192 Paris Vaugirard",91.43,null,76],["Saint Etienne Chateaucreux \u2192 Paris Lyon",84.03,81.38,37],["St Malo \u2192 Paris Montparnasse",86.09,86.24,51],["St Pierre Des Corps \u2192 Paris Montparnasse",78.95,79.45,43],["Strasbourg \u2192 Nantes",85.16,87.85,45],["Strasbourg \u2192 Paris Est",81.44,78.37,47],["Stuttgart \u2192 Paris Est",79.78,75.79,15],["Toulon \u2192 Paris Lyon",81.58,78.01,24],["Toulouse Matabiau \u2192 Paris Montparnasse",81.4,77.16,22],["Tourcoing \u2192 Bordeaux St Jean",85.57,88.16,37],["Tourcoing \u2192 Marseille St Charles",85.62,null,34],["Tours \u2192 Paris Montparnasse",79.91,77.43,36],["Valence Alixan Tgv \u2192 Paris Lyon",78.07,79.7,21],["Vannes \u2192 Paris Montparnasse",82.39,83.7,32],["Zurich \u2192 Paris Lyon",89.04,91.04,47]]; // [route, reliability_full, reliability_l12m|null, nps]
+const S = { period: "full", start: "__avg__", gain: 5, ceil: 65, fit: null };
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const fmt = (v, d = 1) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d);
+
+function points() {
+  return RAW.map(([name, rf, rl, nps]) => ({ name, r: S.period === "full" ? rf : (rl ?? rf), nps, inactive: rl === null }))
+    .filter(p => S.period === "full" || !p.inactive);
+}
+
+// Fit NPS = C - b*exp(-k(R-80)) for fixed C: grid over k, closed-form b.
+function fitCurve(pts, C) {
+  let best = null;
+  for (let i = 0; i <= 400; i++) {
+    const k = 0.002 * Math.pow(250, i / 400); // 0.002 .. 0.5
+    let szy = 0, szz = 0;
+    for (const p of pts) { const z = Math.exp(-k * (p.r - 80)); szy += z * (C - p.nps); szz += z * z; }
+    const b = Math.max(0, szy / szz);
+    let sse = 0;
+    for (const p of pts) { const e = p.nps - (C - b * Math.exp(-k * (p.r - 80))); sse += e * e; }
+    if (!best || sse < best.sse) best = { k, b, sse };
+  }
+  const mean = pts.reduce((a, p) => a + p.nps, 0) / pts.length;
+  const sst = pts.reduce((a, p) => a + (p.nps - mean) ** 2, 0);
+  // linear benchmark
+  const mx = pts.reduce((a, p) => a + p.r, 0) / pts.length;
+  let sxy = 0, sxx = 0; for (const p of pts) { sxy += (p.r - mx) * (p.nps - mean); sxx += (p.r - mx) ** 2; }
+  const slope = sxy / sxx, icpt = mean - slope * mx;
+  const sseLin = pts.reduce((a, p) => a + (p.nps - (icpt + slope * p.r)) ** 2, 0);
+  return { C, ...best, r2: 1 - best.sse / sst, rmse: Math.sqrt(best.sse / pts.length), r2Lin: 1 - sseLin / sst, f: R => C - best.b * Math.exp(-best.k * (R - 80)), d: R => best.b * best.k * Math.exp(-best.k * (R - 80)) };
+}
+
+function startInfo(pts) {
+  if (S.start === "__avg__") {
+    const r = pts.reduce((a, p) => a + p.r, 0) / pts.length;
+    return { label: "Network average", r, nps: S.fit.f(r), onCurve: true };
+  }
+  const p = pts.find(q => q.name === S.start) || RAW.map(([name, rf, rl, nps]) => ({ name, r: rf, nps })).find(q => q.name === S.start);
+  return { label: p.name, r: p.r, nps: p.nps, onCurve: false };
+}
+
+// ---------- main chart ----------
+const W = 720, H = 430, M = { l: 48, r: 18, t: 14, b: 40 };
+let X, Y, Xinv, XD;
+function render() {
+  const pts = points();
+  S.fit = fitCurve(pts, S.ceil);
+  const st = startInfo(pts);
+  const maxGain = Math.max(0, Math.min(15, 99.5 - st.r));
+  const g = $("gain"); g.max = maxGain.toFixed(1); if (S.gain > maxGain) S.gain = maxGain; g.value = S.gain;
+  const r1 = st.r + S.gain;
+  const dN = S.fit.f(r1) - S.fit.f(st.r);
+  const n1 = st.nps + dN;
+
+  const minR = Math.min(...pts.map(p => p.r));
+  XD = [Math.floor((minR - 2) / 5) * 5, 100];
+  const YD = [-30, 100];
+  X = v => M.l + (v - XD[0]) / (XD[1] - XD[0]) * (W - M.l - M.r);
+  Xinv = px => XD[0] + (px - M.l) / (W - M.l - M.r) * (XD[1] - XD[0]);
+  Y = v => H - M.b - (v - YD[0]) / (YD[1] - YD[0]) * (H - M.t - M.b);
+
+  const svg = $("chart"); svg.innerHTML = "";
+  // grid + axes
+  for (let v = YD[0]; v <= YD[1]; v += 10) {
+    el("line", { x1: M.l, x2: W - M.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? "var(--rule)" : "var(--grid)", "stroke-width": 1 }, svg);
+    el("text", { x: M.l - 8, y: Y(v) + 4, "text-anchor": "end" }, svg).textContent = v;
+  }
+  const step = XD[1] - XD[0] > 40 ? 10 : 5;
+  for (let v = XD[0]; v <= XD[1]; v += step) {
+    el("line", { x1: X(v), x2: X(v), y1: M.t, y2: H - M.b, stroke: "var(--grid)", "stroke-width": 1 }, svg);
+    el("text", { x: X(v), y: H - M.b + 18, "text-anchor": "middle" }, svg).textContent = v + "%";
+  }
+  el("text", { x: (M.l + W - M.r) / 2, y: H - 6, "text-anchor": "middle", fill: "var(--ink-2)" }, svg).textContent = "Reliability (% of scheduled trains that ran and arrived on time)";
+  const yl = el("text", { x: 12, y: (M.t + H - M.b) / 2, "text-anchor": "middle", fill: "var(--ink-2)", transform: `rotate(-90 12 ${(M.t + H - M.b) / 2})` }, svg); yl.textContent = "NPS (simulated)";
+
+  // observed range band
+  const maxR = Math.max(...pts.map(p => p.r));
+  el("rect", { x: X(maxR), y: M.t, width: X(100) - X(maxR), height: H - M.t - M.b, fill: "var(--grid)", opacity: .6 }, svg);
+  el("text", { x: X(maxR) + 6, y: M.t + 14, fill: "var(--ink-3)" }, svg).textContent = "no routes here:"; el("text", { x: X(maxR) + 6, y: M.t + 28, fill: "var(--ink-3)" }, svg).textContent = "extrapolation";
+
+  // ceiling
+  el("line", { x1: M.l, x2: W - M.r, y1: Y(S.ceil), y2: Y(S.ceil), stroke: "var(--ceiling)", "stroke-width": 1.5, "stroke-dasharray": "5 4" }, svg);
+  el("text", { x: M.l + 6, y: Y(S.ceil) - 6, fill: "var(--ink-2)" }, svg).textContent = `ceiling ${S.ceil}`;
+
+  // dots
+  const isSel = p => p.name === S.start;
+  for (const p of pts) {
+    const c = el("circle", { cx: X(p.r), cy: Y(p.nps), r: 4.5, fill: "var(--dots)", "fill-opacity": isSel(p) ? 0 : .55, stroke: "var(--panel)", "stroke-width": 1 }, svg);
+    c.dataset.tip = `${p.name}\nReliability ${p.r.toFixed(1)}% · NPS ${p.nps}`;
+  }
+
+  // curve
+  let d = "";
+  for (let r = XD[0]; r <= 100.001; r += 0.25) { const fy = S.fit.f(r); if (fy < YD[0]) continue; const y = Math.min(YD[1], fy); d += (d ? "L" : "M") + X(r).toFixed(1) + "," + Y(y).toFixed(1); }
+  el("path", { d, fill: "none", stroke: "var(--curve)", "stroke-width": 2 }, svg);
+
+  // scenario path (curve shifted to pass through the start point)
+  const off = st.nps - S.fit.f(st.r);
+  let sp = "";
+  for (let r = st.r; r <= r1 + 0.001; r += 0.1) sp += (sp ? "L" : "M") + X(r).toFixed(1) + "," + Y(S.fit.f(r) + off).toFixed(1);
+  if (S.gain > 0) el("path", { d: sp, fill: "none", stroke: "var(--accent)", "stroke-width": 4, "stroke-linecap": "round" }, svg);
+  // guides
+  el("line", { x1: X(r1), x2: X(r1), y1: Y(n1), y2: H - M.b, stroke: "var(--accent)", "stroke-width": 1, "stroke-dasharray": "2 3" }, svg);
+  el("line", { x1: M.l, x2: X(r1), y1: Y(n1), y2: Y(n1), stroke: "var(--accent)", "stroke-width": 1, "stroke-dasharray": "2 3" }, svg);
+  el("circle", { cx: X(st.r), cy: Y(st.nps), r: 6, fill: "var(--panel)", stroke: "var(--accent)", "stroke-width": 2.5 }, svg);
+  const h = el("circle", { cx: X(r1), cy: Y(n1), r: 9, fill: "var(--accent)", stroke: "var(--panel)", "stroke-width": 2.5, style: "cursor:ew-resize" }, svg);
+  h.dataset.handle = "1";
+  const lab = el("text", { x: X(r1) + (X(r1) > W - 140 ? -14 : 14), y: Y(n1) - 12, "text-anchor": X(r1) > W - 140 ? "end" : "start", fill: "var(--ink)", "font-weight": 600, stroke: "var(--panel)", "stroke-width": 4, "paint-order": "stroke" }, svg);
+  lab.textContent = `${r1.toFixed(1)}% → NPS ${n1.toFixed(1)}`;
+
+  // readouts
+  $("gainOut").textContent = `+${S.gain.toFixed(1)} pts`;
+  $("ceilOut").textContent = S.ceil;
+  $("dNps").textContent = fmt(dN) + " NPS";
+  $("npsPath").textContent = `${st.nps.toFixed(1)} → ${n1.toFixed(1)}${st.onCurve ? " (on curve)" : ""}`;
+  $("dRel").textContent = `+${S.gain.toFixed(1)} pts`;
+  $("relPath").textContent = `${st.r.toFixed(1)}% → ${r1.toFixed(1)}%  ·  ${fmt(100 * S.gain / st.r)}% relative`;
+  const m0 = S.fit.d(st.r), m1 = S.fit.d(r1);
+  $("marg").textContent = fmt(m1, 2) + " NPS";
+  $("margNote").textContent = `per extra point at ${r1.toFixed(1)}%. At the start (${st.r.toFixed(1)}%) a point was worth ${fmt(m0, 2)}.`;
+  $("fit").innerHTML = `R² ${S.fit.r2.toFixed(3)} with this ceiling<br>R² ${S.fit.r2Lin.toFixed(3)} for a straight line<br>Typical miss ±${S.fit.rmse.toFixed(1)} NPS · n = ${pts.length}`;
+
+  renderMarginal(st.r, r1);
+}
+
+// ---------- marginal chart ----------
+function renderMarginal(r0, r1) {
+  const svg = $("marginal"); svg.innerHTML = "";
+  const w = 1000, h = 170, m = { l: 48, r: 18, t: 12, b: 28 };
+  const lo = Math.max(XD[0], 60), bins = [];
+  for (let r = lo; r < 100; r++) bins.push({ r, v: S.fit.f(r + 1) - S.fit.f(r) });
+  const vmax = Math.max(...bins.map(b => b.v), 0.5);
+  const bw = (w - m.l - m.r) / bins.length;
+  const yy = v => h - m.b - v / vmax * (h - m.t - m.b);
+  for (const t of [0, vmax / 2, vmax]) {
+    el("line", { x1: m.l, x2: w - m.r, y1: yy(t), y2: yy(t), stroke: "var(--grid)" }, svg);
+    el("text", { x: m.l - 8, y: yy(t) + 4, "text-anchor": "end" }, svg).textContent = t.toFixed(1);
+  }
+  bins.forEach((b, i) => {
+    const inS = b.r >= Math.floor(r0) && b.r < r1;
+    const x = m.l + i * bw + 1, bh = Math.max(0, h - m.b - yy(b.v));
+    const rect = el("rect", { x, y: h - m.b - bh, width: Math.max(1, bw - 2), height: bh, rx: 2, fill: inS ? "var(--accent)" : "var(--dots)", "fill-opacity": inS ? 1 : .45 }, svg);
+    rect.dataset.tip = `${b.r}% → ${b.r + 1}%: ${fmt(b.v, 2)} NPS`;
+    if (b.r % 5 === 0) el("text", { x: x + bw / 2, y: h - m.b + 16, "text-anchor": "middle" }, svg).textContent = b.r + "%";
+  });
+}
+
+// ---------- interaction ----------
+function svgX(evt) { const svg = $("chart"); const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()).x; }
+let dragging = false;
+const chart = $("chart");
+chart.addEventListener("pointerdown", e => { dragging = true; chart.setPointerCapture(e.pointerId); moveTo(e); });
+chart.addEventListener("pointermove", e => { if (dragging) moveTo(e); else hover(e); });
+chart.addEventListener("pointerup", () => { dragging = false; });
+chart.addEventListener("pointerleave", () => { if (!dragging) $("tip").hidden = true; });
+function moveTo(e) {
+  const st = startInfo(points());
+  const r = Xinv(svgX(e));
+  S.gain = Math.round(Math.max(0, Math.min(+$("gain").max, r - st.r)) * 10) / 10;
+  $("tip").hidden = true; render();
+}
+function hover(e) {
+  const t = e.target.dataset && e.target.dataset.tip; const tip = $("tip");
+  if (!t) { tip.hidden = true; return; }
+  const card = e.currentTarget.closest(".chart-card, .sub").getBoundingClientRect();
+  tip.textContent = ""; t.split("\n").forEach((line, i) => { if (i) tip.appendChild(document.createElement("br")); tip.appendChild(document.createTextNode(line)); });
+  const host = e.currentTarget.closest(".chart-card, .sub"); if (tip.parentElement !== host) { host.style.position = "relative"; host.appendChild(tip); }
+  tip.style.left = (e.clientX - card.left) + "px"; tip.style.top = (e.clientY - card.top) + "px"; tip.hidden = false;
+}
+$("marginal").addEventListener("pointermove", hover);
+$("marginal").addEventListener("pointerleave", () => { $("tip").hidden = true; });
+
+$("gain").addEventListener("input", e => { S.gain = +e.target.value; render(); });
+$("ceil").addEventListener("input", e => { S.ceil = +e.target.value; render(); });
+$("start").addEventListener("change", e => { S.start = e.target.value; render(); });
+function setPeriod(p) {
+  S.period = p; $("pFull").setAttribute("aria-pressed", p === "full"); $("pL12").setAttribute("aria-pressed", p !== "full");
+  if (p !== "full" && S.start !== "__avg__" && !points().some(q => q.name === S.start)) { S.start = "__avg__"; }
+  fillSelect(); render();
+}
+$("pFull").addEventListener("click", () => setPeriod("full"));
+$("pL12").addEventListener("click", () => setPeriod("l12"));
+
+function fillSelect() {
+  const s = $("start"); s.innerHTML = "";
+  const o = new Option("Network average (on the curve)", "__avg__"); s.add(o);
+  points().slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(p => s.add(new Option(`${p.name} (NPS ${p.nps})`, p.name)));
+  s.value = S.start;
+}
+(function table() {
+  const tb = document.querySelector("#tbl tbody");
+  RAW.slice().sort((a, b) => b[1] - a[1]).forEach(([n, rf, rl, nps]) => {
+    const tr = document.createElement("tr");
+    [n, rf.toFixed(1), rl === null ? "no trains" : rl.toFixed(1), nps].forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i) td.className = "n"; tr.appendChild(td); });
+    tb.appendChild(tr);
+  });
+})();
+fillSelect();
+render();
+</script>
