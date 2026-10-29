@@ -1,0 +1,17 @@
+features,n_features,model,cv_r2,cv_r2_sd,cv_rmse_nps
+Core 3 punctuality,3,Linear (OLS),0.644,0.007,8.64
+All performance (21),19,Linear (Ridge),0.592,0.016,9.24
+Performance + trip purpose + complaints,31,Linear (Ridge),0.574,0.024,9.44
+Core 3 punctuality,3,CatBoost,0.543,0.023,9.78
+Core 3 punctuality,3,XGBoost,0.53,0.016,9.92
+All performance (21),19,CatBoost,0.501,0.032,10.22
+Performance + trip purpose + complaints,31,CatBoost,0.5,0.032,10.23
+Core 3 punctuality,3,LightGBM,0.476,0.034,10.47
+All performance (21),19,XGBoost,0.476,0.025,10.47
+Performance + trip purpose + complaints,31,XGBoost,0.471,0.028,10.52
+Performance + trip purpose + complaints,31,Random forest,0.467,0.025,10.57
+All performance (21),19,Random forest,0.466,0.025,10.58
+Core 3 punctuality,3,Random forest,0.459,0.022,10.65
+All performance (21),19,LightGBM,0.446,0.03,10.77
+Reliability only (current simulator),1,Linear (OLS),0.443,0.019,10.8
+Performance + trip purpose + complaints,31,LightGBM,0.44,0.028,10.83
