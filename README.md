@@ -14,3 +14,12 @@ EDHEC MSc Marketing Analytics – Data Visualisation Project (SNCF open data).
 Rebuild: `python scripts/build_case3_dataset.py`
 
 > NPS, review counts, trip purpose and complaint reasons are SIMULATED for teaching purposes.
+
+## PSX weekly direction backtest (separate project)
+- `scripts/psx_weekly_direction_backtest.py`: walk-forward test of 7 ML models and 3 simple rules that predict whether a liquid KSE-100 stock goes up or down next week
+- `data/raw/psx/`: daily PSX open/high/low/close/volume snapshot (2016 → 8 Oct 2026)
+- `data/processed/psx/`: predictions, accuracy, trading-simulation results
+- `reports/psx/README.md`: findings and charts
+
+Requires: `pip install pandas scikit-learn lightgbm xgboost matplotlib scipy`
+Run: `python scripts/psx_weekly_direction_backtest.py` (add `--test-end 2025-10-08` to test the previous year)

@@ -1,0 +1,9 @@
+{
+  "data_last_date": "2026-10-08",
+  "test_weeks": "2025-10-04/2025-10-10 .. 2026-09-26/2026-10-02",
+  "test_samples": 2926,
+  "liquid_stocks_per_week_avg": 56.26923076923077,
+  "share_of_up_weeks_in_test": 0.43711551606288446,
+  "min_median_daily_value_pkr": 50000000,
+  "prediction_for_week_after": "2026-10-03/2026-10-09"
+}
